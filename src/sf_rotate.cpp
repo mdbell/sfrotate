@@ -1,24 +1,17 @@
 #include <sys/system_properties.h>
 #include <stdlib.h>
-#include <android/log.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <inttypes.h>
 
+#include "gnu_debugdata_resolver.h"
+#include "log.h"
+
 #if defined(__aarch64__)
 #  define SF_BRPROT __attribute__((target("branch-protection=standard")))
 #else
 #  define SF_BRPROT
-#endif
-
-
-#ifdef SFROTATE_DEBUG
-  #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  "sfrotate", __VA_ARGS__)
-  #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "sfrotate", __VA_ARGS__)
-#else
-  #define LOGI(...) ((void)0)
-  #define LOGE(...) ((void)0)
 #endif
 
 #define FEATURE_ROTATION 4
@@ -41,6 +34,12 @@ static const uintptr_t OFF_HIDL_IS_SUPPORTED = 0x139e2c; // _ZNK7android4Hwc212H
 static const uintptr_t OFF_AIDL_IS_SUPPORTED = 0x10f204; // _ZNK7android4Hwc212AidlComposer11isSupportedENS0_8Composer15OptionalFeatureE
 
 static const uintptr_t OFF_IMPL = 0x159ed0; // _ZNK7android4impl10HWComposer29getPhysicalDisplayOrientationENS_17PhysicalDisplayIdE
+
+static const char* SYM_IMPL =
+  "_ZNK7android4impl10HWComposer29getPhysicalDisplayOrientationENS_17PhysicalDisplayIdE";
+
+static const char* SYM_HIDL_IS_SUPPORTED =
+  "_ZNK7android4Hwc212HidlComposer11isSupportedENS0_8Composer15OptionalFeatureE";
 
 static int rotation_degree = 270; // desired rotation for external display
 
@@ -72,7 +71,7 @@ static int prop_degree() {
 }
 
 static int get_transform_for_degree(int degree) {
-  LOGI("get_transform_for_degree(%d)", degree);
+  LOGV("get_transform_for_degree(%d)", degree);
   switch (degree) {
     case 0: return ROT_0;
     case 90: return ROT_90;
@@ -113,10 +112,10 @@ SF_BRPROT static bool isSupportedHIDLHook(void* self, int feature) {
     return origHidlIsSupported ? origHidlIsSupported(self, feature) : false;
   }
   if (feature == FEATURE_ROTATION){
-    LOGI("isSupportedHIDL(4) -> true (forced)");
+    LOGV("isSupportedHIDL(4) -> true (forced)");
     return true;
   }
-  LOGI("isSupportedHIDL(%d)", feature);
+  LOGV("isSupportedHIDL(%d)", feature);
   return origHidlIsSupported ? origHidlIsSupported(self, feature) : false;
 }
 
@@ -127,10 +126,10 @@ SF_BRPROT static bool isSupportedAIDLHook(void* self, int feature) {
   }
 
   if (feature == FEATURE_ROTATION){
-    LOGI("isSupportedAIDL(4) -> true");
+    LOGV("isSupportedAIDL(4) -> true");
     return true;
   }
-  LOGI("isSupportedAIDL(%d)", feature);
+  LOGV("isSupportedAIDL(%d)", feature);
   return origAidlIsSupported ? origAidlIsSupported(self, feature) : false;
 }
 
@@ -143,11 +142,11 @@ SF_BRPROT static int getPhysicalDisplayOrientationHook(void* self, unsigned long
   const bool isPrimary = (id == 1ULL);
   if(isPrimary) {
     auto result = origImpl ? origImpl(self, id) : ROT_0;
-    LOGI("getPhysicalDisplayOrientation(%" PRIu64 ") -> %d", id, result); 
+    LOGV("getPhysicalDisplayOrientation(%" PRIu64 ") -> %d", id, result); 
     return result;
   }
   auto rotation = prop_degree();
-  LOGI("getPhysicalDisplayOrientation(%" PRIu64 ") -> %d degrees (forced)", id, rotation);
+  LOGV("getPhysicalDisplayOrientation(%" PRIu64 ") -> %d degrees (forced)", id, rotation);
   return get_transform_for_degree(rotation);
 }
 
@@ -157,14 +156,27 @@ static void init_sfrotate() {
   const uintptr_t base = get_sf_base();
   if (!base) { LOGE("could not find surfaceflinger base"); return; }
 
-  void* hidlIsSupported = (void*)(base + OFF_HIDL_IS_SUPPORTED);
-  void* aidlIsSupported = (void*)(base + OFF_AIDL_IS_SUPPORTED);
-  void* impl = (void*)(base + OFF_IMPL);
+  //void* hidlIsSupported = (void*)(base + OFF_HIDL_IS_SUPPORTED);
+  void* hidlIsSupported = (void*)resolve_addr_from_gnu_debugdata("/system/bin/surfaceflinger",
+                                                        SYM_HIDL_IS_SUPPORTED, base);
+  //void* aidlIsSupported = (void*)(base + OFF_AIDL_IS_SUPPORTED);
+  void* impl = (void*)resolve_addr_from_gnu_debugdata("/system/bin/surfaceflinger",
+                                                        SYM_IMPL, base);
 
-LOGI("base=0x%lx  off_impl=0x%lx  abs=0x%lx",
-     (unsigned long)base,
-     (unsigned long)OFF_IMPL,
-     (unsigned long)(base + OFF_IMPL));
+  if(!hidlIsSupported) {
+    LOGE("hidlIsSupported symbol not found via .gnu_debugdata");
+    return;
+  }
+
+  if (!impl) {
+    LOGE("impl symbol not found via .gnu_debugdata");
+    return;
+  }
+
+  LOGV("surfaceflinger base @ 0x%lx", (unsigned long)base);
+  LOGV("hidlIsSupported @ %p", hidlIsSupported);
+  //LOGV("aidlIsSupported @ %p", aidlIsSupported);
+  LOGV("impl @ %p", impl);
 
   // install hooks (best-effort, some symbols may not exist on your build)
   auto hook = [&](void* sym, void* rep, void** orig, const char* name){
