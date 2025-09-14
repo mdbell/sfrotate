@@ -12,11 +12,17 @@ set(CMAKE_ANDROID_API 29)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Your injector / hook library
+option(SFROTATE_DEBUG "Enable sfrotate verbose logging" OFF)
+
+# Hook library
 add_library(sf_rotate SHARED
     src/And64InlineHook.cpp
     src/sf_rotate.cpp
 )
+
+if (SFROTATE_DEBUG)
+  target_compile_definitions(sf_rotate PRIVATE SFROTATE_DEBUG=1)
+endif()
 
 target_compile_options(sf_rotate PRIVATE -mbranch-protection=standard)
 

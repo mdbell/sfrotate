@@ -1,11 +1,10 @@
-// sf_rotate.cpp  (snippet)
+#include <sys/system_properties.h>
+#include <stdlib.h>
 #include <android/log.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <inttypes.h>
-
-#define DEBUG_LOG
 
 #if defined(__aarch64__)
 #  define SF_BRPROT __attribute__((target("branch-protection=standard")))
@@ -14,7 +13,7 @@
 #endif
 
 
-#ifdef DEBUG_LOG
+#ifdef SFROTATE_DEBUG
   #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  "sfrotate", __VA_ARGS__)
   #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "sfrotate", __VA_ARGS__)
 #else
@@ -35,12 +34,15 @@
 #define ROT_0   TF_NONE
 
 //TODO: resolve these symbols ourselves instead of hardcoding offsets
+//      till then we can get offsets via offsets.js script and run it via frida
 static const uintptr_t OFF_HIDL_IS_SUPPORTED = 0x139e2c; // _ZNK7android4Hwc212HidlComposer11isSupportedENS0_8Composer15OptionalFeatureE
+
+// when using this hook it causes surfaceflinger to crash - so it's presently unused.
 static const uintptr_t OFF_AIDL_IS_SUPPORTED = 0x10f204; // _ZNK7android4Hwc212AidlComposer11isSupportedENS0_8Composer15OptionalFeatureE
 
 static const uintptr_t OFF_IMPL = 0x159ed0; // _ZNK7android4impl10HWComposer29getPhysicalDisplayOrientationENS_17PhysicalDisplayIdE
 
-static const int rotation_degree = 270; // desired rotation for external display
+static int rotation_degree = 270; // desired rotation for external display
 
 extern "C" void A64HookFunction(void *symbol, void *replace, void **result); // And64InlineHook
 
@@ -53,6 +55,21 @@ using GetPhysOriReturning  = int (*)(void* self, unsigned long long displayId);
 static IsSupportedFn origHidlIsSupported = nullptr;
 static IsSupportedFn origAidlIsSupported = nullptr;
 static GetPhysOriReturning  origImpl = nullptr;
+
+
+static bool prop_enabled() {
+  char v[PROP_VALUE_MAX] = {0};
+  if (__system_property_get("persist.sfrotate.enable", v) > 0) return strcmp(v, "0") != 0;
+  return true; // default on
+}
+static int prop_degree() {
+  char v[PROP_VALUE_MAX] = {0};
+  if (__system_property_get("persist.panel.rds.orientation", v) > 0) {
+    int d = atoi(v);
+    if (d==0 || d==90 || d==180 || d==270) return d;
+  }
+  return rotation_degree;
+}
 
 static int get_transform_for_degree(int degree) {
   LOGI("get_transform_for_degree(%d)", degree);
@@ -92,6 +109,9 @@ static uintptr_t get_sf_base() {
 }
 
 SF_BRPROT static bool isSupportedHIDLHook(void* self, int feature) {
+  if(!prop_enabled()){
+    return origHidlIsSupported ? origHidlIsSupported(self, feature) : false;
+  }
   if (feature == FEATURE_ROTATION){
     LOGI("isSupportedHIDL(4) -> true (forced)");
     return true;
@@ -101,6 +121,11 @@ SF_BRPROT static bool isSupportedHIDLHook(void* self, int feature) {
 }
 
 SF_BRPROT static bool isSupportedAIDLHook(void* self, int feature) {
+
+  if(!prop_enabled()){
+    return origAidlIsSupported ? origAidlIsSupported(self, feature) : false;
+  }
+
   if (feature == FEATURE_ROTATION){
     LOGI("isSupportedAIDL(4) -> true");
     return true;
@@ -110,14 +135,20 @@ SF_BRPROT static bool isSupportedAIDLHook(void* self, int feature) {
 }
 
 SF_BRPROT static int getPhysicalDisplayOrientationHook(void* self, unsigned long long id) {
+
+  if (!prop_enabled()) {
+    return origImpl ? origImpl(self, id) : ROT_0;
+  }
+
   const bool isPrimary = (id == 1ULL);
   if(isPrimary) {
     auto result = origImpl ? origImpl(self, id) : ROT_0;
     LOGI("getPhysicalDisplayOrientation(%" PRIu64 ") -> %d", id, result); 
     return result;
   }
-  LOGI("getPhysicalDisplayOrientation(%" PRIu64 ") -> %d degrees (forced)", id, rotation_degree);
-  return get_transform_for_degree(rotation_degree);
+  auto rotation = prop_degree();
+  LOGI("getPhysicalDisplayOrientation(%" PRIu64 ") -> %d degrees (forced)", id, rotation);
+  return get_transform_for_degree(rotation);
 }
 
 SF_BRPROT __attribute__((constructor))
