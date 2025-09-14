@@ -20,14 +20,14 @@ add_library(sf_rotate SHARED
     src/sf_rotate.cpp
 )
 
+target_compile_options(sf_rotate PRIVATE -mbranch-protection=standard)
+target_link_libraries(sf_rotate PRIVATE log dl)
+
+# injector
+
+add_executable(dlopen64 src/dlopen64.cpp)
+target_link_libraries(dlopen64 PRIVATE dl)
+
 if (SFROTATE_DEBUG)
   target_compile_definitions(sf_rotate PRIVATE SFROTATE_DEBUG=1)
 endif()
-
-target_compile_options(sf_rotate PRIVATE -mbranch-protection=standard)
-
-target_link_libraries(sf_rotate
-    PRIVATE
-      log             # android log
-      dl              # dlsym, etc.
-)

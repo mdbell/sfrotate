@@ -37,6 +37,14 @@ RUN wget https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/c
 ENV CLANG_PATH=/llvm-15.0.6/bin
 ENV PATH=$CLANG_PATH:$PATH
 
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+
+RUN cargo install cargo-ndk
+
 RUN useradd -ms /bin/bash vscode
 
 RUN echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
