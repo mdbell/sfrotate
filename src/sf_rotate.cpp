@@ -26,14 +26,8 @@
 #define ROT_90  TF_ROT_90
 #define ROT_0   TF_NONE
 
-//TODO: resolve these symbols ourselves instead of hardcoding offsets
-//      till then we can get offsets via offsets.js script and run it via frida
-static const uintptr_t OFF_HIDL_IS_SUPPORTED = 0x139e2c; // _ZNK7android4Hwc212HidlComposer11isSupportedENS0_8Composer15OptionalFeatureE
-
 // when using this hook it causes surfaceflinger to crash - so it's presently unused.
 static const uintptr_t OFF_AIDL_IS_SUPPORTED = 0x10f204; // _ZNK7android4Hwc212AidlComposer11isSupportedENS0_8Composer15OptionalFeatureE
-
-static const uintptr_t OFF_IMPL = 0x159ed0; // _ZNK7android4impl10HWComposer29getPhysicalDisplayOrientationENS_17PhysicalDisplayIdE
 
 static const char* SYM_IMPL =
   "_ZNK7android4impl10HWComposer29getPhysicalDisplayOrientationENS_17PhysicalDisplayIdE";
@@ -47,14 +41,12 @@ extern "C" void A64HookFunction(void *symbol, void *replace, void **result); // 
 
 // prototypes that match the targets
 using IsSupportedFn = bool(*)(void* self, int feature);
-using GetPhysOriFn  = int (*)(void* self, unsigned long long displayId, int* outTransform);
+using GetPhysOriFn  = int (*)(void* self, unsigned long long displayId);
 
-using GetPhysOriReturning  = int (*)(void* self, unsigned long long displayId);
 
 static IsSupportedFn origHidlIsSupported = nullptr;
 static IsSupportedFn origAidlIsSupported = nullptr;
-static GetPhysOriReturning  origImpl = nullptr;
-
+static GetPhysOriFn  origImpl = nullptr;
 
 static bool prop_enabled() {
   char v[PROP_VALUE_MAX] = {0};
@@ -156,7 +148,6 @@ static void init_sfrotate() {
   const uintptr_t base = get_sf_base();
   if (!base) { LOGE("could not find surfaceflinger base"); return; }
 
-  //void* hidlIsSupported = (void*)(base + OFF_HIDL_IS_SUPPORTED);
   void* hidlIsSupported = (void*)resolve_addr_from_gnu_debugdata("/system/bin/surfaceflinger",
                                                         SYM_HIDL_IS_SUPPORTED, base);
   //void* aidlIsSupported = (void*)(base + OFF_AIDL_IS_SUPPORTED);
@@ -186,10 +177,10 @@ static void init_sfrotate() {
     LOGI("hooked %s @ %p", name, sym);
   };
 
-  hook(hidlIsSupported, (void*)isSupportedHIDLHook, (void**)&origHidlIsSupported, "_ZNK7android4Hwc212HidlComposer11isSupportedENS0_8Composer15OptionalFeatureE");
+  hook(hidlIsSupported, (void*)isSupportedHIDLHook, (void**)&origHidlIsSupported, SYM_HIDL_IS_SUPPORTED);
   //hooking the aidl func causes surfaceflinger to crash - so let it be for now
   //hook(aidlIsSupported, (void*)isSupportedAIDLHook, (void**)&origAidlIsSupported, "_ZNK7android4Hwc212AidlComposer11isSupportedENS0_8Composer15OptionalFeatureE");
-  hook(impl, (void*)getPhysicalDisplayOrientationHook,    (void**)&origImpl, "_ZNK7android4impl10HWComposer29getPhysicalDisplayOrientationENS_17PhysicalDisplayIdE");
+  hook(impl, (void*)getPhysicalDisplayOrientationHook,    (void**)&origImpl, SYM_IMPL);
 
   LOGI("sfrotate ready");
 }
