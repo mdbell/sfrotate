@@ -4,7 +4,7 @@
 const FORCE_DEGREES   = 270;          // 0, 90, 180, 270
 const PRIMARY_ID_HEX  = '0x1';       // adjust after you learn the real primary id
 const FORCE_ALL_IDS   = false;       // set true briefly to verify it visually
-const QUIET_LOG       = true;
+const QUIET_LOG       = false;
 // ---------------------------------------------------------------------------
 
 // HWC/AIDL transform bit flags:

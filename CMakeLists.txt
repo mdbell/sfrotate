@@ -18,6 +18,8 @@ add_library(sf_rotate SHARED
     src/sf_rotate.cpp
 )
 
+target_compile_options(sf_rotate PRIVATE -mbranch-protection=standard)
+
 target_link_libraries(sf_rotate
     PRIVATE
       log             # android log
