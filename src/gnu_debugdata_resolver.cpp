@@ -11,7 +11,7 @@
 #include "log.h"
 
 extern "C" {
-// xz-embedded API headers (adjust include path to where you put them)
+// xz-embedded API headers
 #include "xz.h"
 }
 

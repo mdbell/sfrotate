@@ -3,10 +3,18 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/third_party/**",
+                "${workspaceFolder}/src/**",
+                "/opt/android-sdk/ndk/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/",
+                "/opt/android-sdk/ndk/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/aarch64-linux-android"
             ],
-            "defines": [],
-            "compilerPath": "/llvm-15.0.6/bin/clang",
+            "defines": [
+                "__ANDROID__",
+                "__aarch64__",
+                "XZ_DEC_ANY_CHECK",
+                "XZ_USE_CRC64"
+            ],
+            "compilerPath": "/opt/android-sdk/ndk/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++",
             "cStandard": "c17",
             "cppStandard": "c++14",
             "intelliSenseMode": "linux-clang-x64"
