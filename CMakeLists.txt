@@ -14,6 +14,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(SFROTATE_DEBUG "Enable sfrotate verbose logging" OFF)
 
+# xzdec (Used for parsing ELF sections, for resolving functions)
+
 add_library(xzdec STATIC
   third_party/xz/xz_crc32.c
   third_party/xz/xz_crc64.c
@@ -23,15 +25,21 @@ add_library(xzdec STATIC
 
 target_include_directories(xzdec PUBLIC third_party/xz)
 
-# Hook library
+# hook library
+add_library(and64inlinehook STATIC
+  third_party/and64inlinehook/And64InlineHook.cpp
+)
+
+target_include_directories(and64inlinehook PUBLIC third_party/and64inlinehook)
+
+# sf_rotate
 add_library(sf_rotate SHARED
-    src/And64InlineHook.cpp
     src/sf_rotate.cpp
     src/gnu_debugdata_resolver.cpp
 )
 
 target_compile_options(sf_rotate PRIVATE -mbranch-protection=standard)
-target_link_libraries(sf_rotate PRIVATE xzdec log dl)
+target_link_libraries(sf_rotate PRIVATE xzdec log dl and64inlinehook)
 
 target_compile_definitions(sf_rotate PRIVATE XZ_DEC_ANY_CHECK XZ_USE_CRC64)
 
