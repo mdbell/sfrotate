@@ -1,8 +1,4 @@
 // Minimal ARM64 Android injector that calls dlopen() in a target process.
-// No 'goto'; uses a small RAII session to attach/restore/detach.
-//
-// Build (NDK):
-//   clang++ -O2 -static-libstdc++ -fPIE -pie -o dlopen64 dlopen64.cpp
 //
 // Usage:
 //   ./dlopen64 <pid|process-name> /full/path/lib.so
