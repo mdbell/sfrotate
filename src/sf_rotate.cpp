@@ -1,48 +1,9 @@
-#include <sys/system_properties.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <inttypes.h>
+#include "sf_rotate.hpp"
 
-#include "gnu_debugdata_resolver.h"
-#include "log.h"
-
-#if defined(__aarch64__)
-#  define SF_BRPROT __attribute__((target("branch-protection=standard")))
-#else
-#  define SF_BRPROT
-#endif
-
-#define FEATURE_ROTATION 4
-
-#define TF_NONE 0
-#define TF_FLIP_H 1
-#define TF_FLIP_V 2
-#define TF_ROT_90 4
-
-#define ROT_270 (TF_ROT_90 | TF_FLIP_H | TF_FLIP_V)
-#define ROT_180 (TF_FLIP_H | TF_FLIP_V)
-#define ROT_90  TF_ROT_90
-#define ROT_0   TF_NONE
-
-// when using this hook it causes surfaceflinger to crash - so it's presently unused.
-static const uintptr_t OFF_AIDL_IS_SUPPORTED = 0x10f204; // _ZNK7android4Hwc212AidlComposer11isSupportedENS0_8Composer15OptionalFeatureE
-
-static const char* SYM_IMPL =
-  "_ZNK7android4impl10HWComposer29getPhysicalDisplayOrientationENS_17PhysicalDisplayIdE";
-
-static const char* SYM_HIDL_IS_SUPPORTED =
-  "_ZNK7android4Hwc212HidlComposer11isSupportedENS0_8Composer15OptionalFeatureE";
-
-static int rotation_degree = 270; // desired rotation for external display
-
-extern "C" void A64HookFunction(void *symbol, void *replace, void **result); // And64InlineHook
-
-// prototypes that match the targets
-using IsSupportedFn = bool(*)(void* self, int feature);
-using GetPhysOriFn  = int (*)(void* self, unsigned long long displayId);
-
+// default rotation (can be overridden by prop)
+// 0, 90, 180, 270
+// 270 = portrait
+static int rotation_degree = 270;
 
 static IsSupportedFn origHidlIsSupported = nullptr;
 static IsSupportedFn origAidlIsSupported = nullptr;
@@ -53,6 +14,7 @@ static bool prop_enabled() {
   if (__system_property_get("persist.sfrotate.enable", v) > 0) return strcmp(v, "0") != 0;
   return true; // default on
 }
+
 static int prop_degree() {
   char v[PROP_VALUE_MAX] = {0};
   if (__system_property_get("persist.panel.rds.orientation", v) > 0) {
@@ -60,17 +22,6 @@ static int prop_degree() {
     if (d==0 || d==90 || d==180 || d==270) return d;
   }
   return rotation_degree;
-}
-
-static int get_transform_for_degree(int degree) {
-  LOGV("get_transform_for_degree(%d)", degree);
-  switch (degree) {
-    case 0: return ROT_0;
-    case 90: return ROT_90;
-    case 180: return ROT_180;
-    case 270: return ROT_270;
-    default: return ROT_0; // should not happen
-  }
 }
 
 static uintptr_t get_sf_base() {
@@ -99,11 +50,11 @@ static uintptr_t get_sf_base() {
   return 0;
 }
 
-SF_BRPROT static bool isSupportedHIDLHook(void* self, int feature) {
+SF_BRPROT static bool isSupportedHIDLHook(void* self, OptionalFeature feature) {
   if(!prop_enabled()){
     return origHidlIsSupported ? origHidlIsSupported(self, feature) : false;
   }
-  if (feature == FEATURE_ROTATION){
+  if (feature == OptionalFeature::PhysicalDisplayOrientation){
     LOGV("isSupportedHIDL(4) -> true (forced)");
     return true;
   }
@@ -111,13 +62,13 @@ SF_BRPROT static bool isSupportedHIDLHook(void* self, int feature) {
   return origHidlIsSupported ? origHidlIsSupported(self, feature) : false;
 }
 
-SF_BRPROT static bool isSupportedAIDLHook(void* self, int feature) {
+SF_BRPROT static bool isSupportedAIDLHook(void* self, OptionalFeature feature) {
 
   if(!prop_enabled()){
     return origAidlIsSupported ? origAidlIsSupported(self, feature) : false;
   }
 
-  if (feature == FEATURE_ROTATION){
+  if (feature == OptionalFeature::PhysicalDisplayOrientation){
     LOGV("isSupportedAIDL(4) -> true");
     return true;
   }
@@ -125,15 +76,15 @@ SF_BRPROT static bool isSupportedAIDLHook(void* self, int feature) {
   return origAidlIsSupported ? origAidlIsSupported(self, feature) : false;
 }
 
-SF_BRPROT static int getPhysicalDisplayOrientationHook(void* self, uint64_t id) {
+SF_BRPROT static Transform getPhysicalDisplayOrientationHook(void* self, uint64_t id) {
 
   if (!prop_enabled()) {
-    return origImpl ? origImpl(self, id) : ROT_0;
+    return origImpl ? origImpl(self, id) : Transform::ROT_0;
   }
 
   const bool isPrimary = (id == 1ULL);
   if(isPrimary) {
-    auto result = origImpl ? origImpl(self, id) : ROT_0;
+    auto result = origImpl ? origImpl(self, id) : Transform::ROT_0;
     LOGV("getPhysicalDisplayOrientation(%" PRIu64 ") -> %d", id, result); 
     return result;
   }
@@ -148,10 +99,10 @@ static void init_sfrotate() {
   const uintptr_t base = get_sf_base();
   if (!base) { LOGE("could not find surfaceflinger base"); return; }
 
-  void* hidlIsSupported = (void*)resolve_addr_from_gnu_debugdata("/system/bin/surfaceflinger",
+  void* hidlIsSupported = (void*)resolve_addr_from_gnu_debugdata(SURFACEFLINGER_BIN,
                                                         SYM_HIDL_IS_SUPPORTED, base);
   //void* aidlIsSupported = (void*)(base + OFF_AIDL_IS_SUPPORTED);
-  void* impl = (void*)resolve_addr_from_gnu_debugdata("/system/bin/surfaceflinger",
+  void* impl = (void*)resolve_addr_from_gnu_debugdata(SURFACEFLINGER_BIN,
                                                         SYM_IMPL, base);
 
   if(!hidlIsSupported) {
