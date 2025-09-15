@@ -38,7 +38,14 @@ add_library(sf_rotate SHARED
     src/gnu_debugdata_resolver.cpp
 )
 
-target_compile_options(sf_rotate PRIVATE -mbranch-protection=standard)
+target_compile_options(sf_rotate PRIVATE 
+  -mbranch-protection=standard
+)
+
+target_compile_definitions(sf_rotate PRIVATE
+    $<$<CONFIG:Debug>:SFROTATE_DEBUG>
+)
+
 target_link_libraries(sf_rotate PRIVATE xzdec log dl and64inlinehook)
 
 target_compile_definitions(sf_rotate PRIVATE XZ_DEC_ANY_CHECK XZ_USE_CRC64)

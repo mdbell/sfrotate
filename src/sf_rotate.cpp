@@ -125,7 +125,7 @@ SF_BRPROT static bool isSupportedAIDLHook(void* self, int feature) {
   return origAidlIsSupported ? origAidlIsSupported(self, feature) : false;
 }
 
-SF_BRPROT static int getPhysicalDisplayOrientationHook(void* self, unsigned long long id) {
+SF_BRPROT static int getPhysicalDisplayOrientationHook(void* self, uint64_t id) {
 
   if (!prop_enabled()) {
     return origImpl ? origImpl(self, id) : ROT_0;
