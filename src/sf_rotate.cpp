@@ -7,11 +7,13 @@ static int rotation_degree = 270;
 
 static IsSupportedFn origHidlIsSupported = nullptr;
 static IsSupportedFn origAidlIsSupported = nullptr;
-static GetPhysOriFn  origImpl = nullptr;
+static GetPhysOriFn  origGetPhysicalDisplayOrientation = nullptr;
 
 static bool prop_enabled() {
   char v[PROP_VALUE_MAX] = {0};
-  if (__system_property_get("persist.sfrotate.enable", v) > 0) return strcmp(v, "0") != 0;
+  if (__system_property_get("persist.sfrotate.enable", v) > 0){
+    return strcmp(v, "0") != 0;
+  }
   return true; // default on
 }
 
@@ -19,7 +21,9 @@ static int prop_degree() {
   char v[PROP_VALUE_MAX] = {0};
   if (__system_property_get("persist.panel.rds.orientation", v) > 0) {
     int d = atoi(v);
-    if (d==0 || d==90 || d==180 || d==270) return d;
+    if (d==0 || d==90 || d==180 || d==270){
+      return d;
+    }
   }
   return rotation_degree;
 }
@@ -55,7 +59,7 @@ SF_BRPROT static bool isSupportedHIDLHook(void* self, OptionalFeature feature) {
     return origHidlIsSupported ? origHidlIsSupported(self, feature) : false;
   }
   if (feature == OptionalFeature::PhysicalDisplayOrientation){
-    LOGV("isSupportedHIDL(4) -> true (forced)");
+    LOGV("isSupportedHIDL(PhysicalDisplayOrientation) -> true (forced)");
     return true;
   }
   LOGV("isSupportedHIDL(%d)", feature);
@@ -69,7 +73,7 @@ SF_BRPROT static bool isSupportedAIDLHook(void* self, OptionalFeature feature) {
   }
 
   if (feature == OptionalFeature::PhysicalDisplayOrientation){
-    LOGV("isSupportedAIDL(4) -> true");
+    LOGV("isSupportedAIDL(PhysicalDisplayOrientation) -> true (forced)");
     return true;
   }
   LOGV("isSupportedAIDL(%d)", feature);
@@ -79,12 +83,12 @@ SF_BRPROT static bool isSupportedAIDLHook(void* self, OptionalFeature feature) {
 SF_BRPROT static Transform getPhysicalDisplayOrientationHook(void* self, uint64_t id) {
 
   if (!prop_enabled()) {
-    return origImpl ? origImpl(self, id) : Transform::ROT_0;
+    return origGetPhysicalDisplayOrientation ? origGetPhysicalDisplayOrientation(self, id) : Transform::ROT_0;
   }
 
   const bool isPrimary = (id == 1ULL);
   if(isPrimary) {
-    auto result = origImpl ? origImpl(self, id) : Transform::ROT_0;
+    auto result = origGetPhysicalDisplayOrientation ? origGetPhysicalDisplayOrientation(self, id) : Transform::ROT_0;
     LOGV("getPhysicalDisplayOrientation(%" PRIu64 ") -> %d", id, result); 
     return result;
   }
@@ -97,12 +101,15 @@ SF_BRPROT __attribute__((constructor))
 static void init_sfrotate() {
   LOGI("sfrotate init");
   const uintptr_t base = get_sf_base();
-  if (!base) { LOGE("could not find surfaceflinger base"); return; }
+  if (!base) {
+    LOGE("could not find surfaceflinger base");
+    return;
+  }
 
   void* hidlIsSupported = (void*)resolve_addr_from_gnu_debugdata(SURFACEFLINGER_BIN,
                                                         SYM_HIDL_IS_SUPPORTED, base);
   //void* aidlIsSupported = (void*)(base + OFF_AIDL_IS_SUPPORTED);
-  void* impl = (void*)resolve_addr_from_gnu_debugdata(SURFACEFLINGER_BIN,
+  void* getPhysicalDisplayOrientation = (void*)resolve_addr_from_gnu_debugdata(SURFACEFLINGER_BIN,
                                                         SYM_IMPL, base);
 
   if(!hidlIsSupported) {
@@ -110,28 +117,28 @@ static void init_sfrotate() {
     return;
   }
 
-  if (!impl) {
-    LOGE("impl symbol not found via .gnu_debugdata");
+  if (!getPhysicalDisplayOrientation) {
+    LOGE("getPhysicalDisplayOrientation symbol not found via .gnu_debugdata");
     return;
   }
 
   LOGV("surfaceflinger base @ 0x%lx", (unsigned long)base);
   LOGV("hidlIsSupported @ %p", hidlIsSupported);
-  //LOGV("aidlIsSupported @ %p", aidlIsSupported);
-  LOGV("impl @ %p", impl);
+  LOGV("getPhysicalDisplayOrientation @ %p", impl);
 
-  // install hooks (best-effort, some symbols may not exist on your build)
+  // install hooks (best-effort, some symbols may not exist)
   auto hook = [&](void* sym, void* rep, void** orig, const char* name){
     // crude probe: avoid crashing if offset is bogus
-    if (((uintptr_t)sym & 0xfff) == 0) { LOGE("skip %s: looks nullish", name); return; }
+    if (((uintptr_t)sym & 0xfff) == 0) {
+      LOGE("skip %s: looks nullish", name);
+      return;
+    }
     A64HookFunction(sym, rep, orig);
     LOGI("hooked %s @ %p", name, sym);
   };
 
   hook(hidlIsSupported, (void*)isSupportedHIDLHook, (void**)&origHidlIsSupported, SYM_HIDL_IS_SUPPORTED);
-  //hooking the aidl func causes surfaceflinger to crash - so let it be for now
-  //hook(aidlIsSupported, (void*)isSupportedAIDLHook, (void**)&origAidlIsSupported, "_ZNK7android4Hwc212AidlComposer11isSupportedENS0_8Composer15OptionalFeatureE");
-  hook(impl, (void*)getPhysicalDisplayOrientationHook,    (void**)&origImpl, SYM_IMPL);
+  hook(getPhysicalDisplayOrientation, (void*)getPhysicalDisplayOrientationHook,    (void**)&origGetPhysicalDisplayOrientation, SYM_IMPL);
 
   LOGI("sfrotate ready");
 }
