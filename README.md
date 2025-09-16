@@ -1,35 +1,27 @@
-# Install Instructions
+# sfrotate
 
-Note: This runs a program that gives anything that has access to `adb` complete access to all processes and their memory.
+This is a solution to the retroid dual screen being 'sideways' on AYN Odin devices. It will perform two seperate patches to [SurfaceFlinger](https://source.android.com/docs/core/graphics/surfaceflinger-windowmanager#surfaceflinger)
 
-These instructions are just the commands I did on my PC, and some commands run on the Odin
+1. Force the hardware compositor to report that `OptionalFeature::PhysicalDisplayOrientation` is supported
+2. Replace the contents of `getPhysicalDisplayOrientation` to always report:
+   - The primary display has a rotation of 0 (no rotation)
+   - External displays will report a rotation of 270 (configurable, uses the same prop as specfied by Retroid [here](https://github.com/RetroidPocket/Retroid_Dual_Screen_Add-on_Support) - `persist.panel.rds.orientation`)
 
-## Odin Setup
+All changes are done in-memory, so there is minimal risk to the Android OS. The downside to this is that the root script(s) will need to be re-run after every reboot.
 
-1. Save the `frida.sh` file to `/sdcard/frida.sh`
-2. Download `frida-server-17.2.17-android-arm64.xz` from (here)[https://github.com/frida/frida/releases]
-3. extract the binary from the above file, and save it to `/data/local/tmp/frida`
-4. Run the `frida.sh` script via the Odin's root script options
-5. Enable developer settings on your device
-  - Tap build number 7 times in a row (in "About handheld console" in the settings app)
-6. In "Developer Options" enable wireless debugging, and setup adb with your PC (there's better guides out there then whatever I can write)
+## Native injector
 
-## PC setup
+This is the preffered method of using sfrotate - as it requires no PC or commands to be entered over abd.
 
-1. `pip install frida-tools` - python command, I used the one that shipped with my linux machine (may work on windows, YMMV)
-2. Save `rotate.js` from this repository to your PC
-3. Connect to your odin from your PC via adb (`adb connect ODIN_IP_HERE:PORT_FROM_WIRELESS_DEBUGGING_SETTINGS)`)
-4. run the command `frida -U -n surfaceflinger -l rotate.js`
+1. Download the latest release from [here](https://github.com/mdbell/sfrotate/releases)
+2. Extract to the root of your Odin sdcard
+    - You should have `/sdcard/inject.sh` and `/sdcard/sfrotate/` now on your sd card
+3. On your device, nativate to `System Settings` -> `Odin Settings` -> `Run script as Root`
+4. Select the `inject.sh` to run it
+5. After the script has completed, disconnect and reconnect the retroid display.
 
-You should see output like:
-```
-[*] Using module: surfaceflinger 0x5bc4380000 size 6471680
-[+] hook isSupported HIDL @ 0x5bc44b9e2c
-[+] replace getPhysicalDisplayOrientation (out*) HIDL @ 0x5bc44c03d4
-[+] hook isSupported AIDL @ 0x5bc448f204
-[+] replace getPhysicalDisplayOrientation (out*) AIDL @ 0x5bc44b0440
-[+] replace HWComposer::getPhysicalDisplayOrientation (ret) impl @ 0x5bc44d9ed0
-[+] Installed: correct Transform bitflags; primary=0°, non-primary=forced
-```
+If the inject script has worked as intended, your display should now be correctly rotated. Any changes to the rotation via the prop will also require a disconnect/reconnect to be applied. The inject script does _not_ need to be run a second time.
 
-If you do, disconnect and reconnect the external display. It should be rotated correctly.
+## Frida
+
+Frida scripts are no longer recommended for the end-user, and should only be used for development purposes.
