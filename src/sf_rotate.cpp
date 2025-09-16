@@ -124,7 +124,7 @@ static void init_sfrotate() {
 
   LOGV("surfaceflinger base @ 0x%lx", (unsigned long)base);
   LOGV("hidlIsSupported @ %p", hidlIsSupported);
-  LOGV("getPhysicalDisplayOrientation @ %p", impl);
+  LOGV("getPhysicalDisplayOrientation @ %p", getPhysicalDisplayOrientation);
 
   // install hooks (best-effort, some symbols may not exist)
   auto hook = [&](void* sym, void* rep, void** orig, const char* name){
