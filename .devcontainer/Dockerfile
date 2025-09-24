@@ -2,7 +2,7 @@ FROM ubuntu:22.04
 
 # Install basics
 RUN apt-get update && apt-get install -y \
-    unzip wget curl git build-essential openjdk-17-jdk python3 cmake sudo \
+    zip unzip wget curl git build-essential openjdk-17-jdk python3 cmake sudo \
     && rm -rf /var/lib/apt/lists/*
 
 ARG ANDROID_SDK_ROOT=/opt/android-sdk
